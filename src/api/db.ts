@@ -2,16 +2,12 @@
 import path from 'path';
 import fs from 'fs';
 
-// node:sqlite Node 22.5+ built-in - TypeScript tipleri henüz @types/node'a eklenmedi
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const { DatabaseSync } = require('node:sqlite') as any;
 
 const DATA_DIR = path.join(__dirname, '../../data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const DB_PATH = path.join(DATA_DIR, 'social.db');
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db: any = new DatabaseSync(DB_PATH);
 
 db.exec('PRAGMA journal_mode = WAL');
@@ -25,6 +21,7 @@ db.exec(`
     interests TEXT NOT NULL,
     writing_style TEXT NOT NULL,
     api_key TEXT NOT NULL UNIQUE,
+    autonomous INTEGER DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now'))
   );
 
@@ -58,5 +55,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_posts_agent ON posts(agent_id);
   CREATE INDEX IF NOT EXISTS idx_posts_reply ON posts(reply_to);
 `);
+
+// Graceful shutdown
+process.on('exit', () => { try { db.close(); } catch {} });
 
 export default db;

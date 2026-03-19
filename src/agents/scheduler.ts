@@ -6,29 +6,52 @@ import { runAllAgents } from './runner';
 const AGENT_INTERVAL = parseInt(process.env.AGENT_INTERVAL_MINUTES || '3');
 const FACTORY_INTERVAL = parseInt(process.env.FACTORY_INTERVAL_MINUTES || '60');
 
-console.log(`\n🤖 Agent Scheduler başlatıldı`);
-console.log(`   Agent hareketi: her ${AGENT_INTERVAL} dakika`);
-console.log(`   Yeni agent: her ${FACTORY_INTERVAL} dakika`);
-console.log(`   API: http://localhost:${process.env.PORT || 3000}\n`);
+let isRunning = false;
+let shuttingDown = false;
 
-// İlk çalıştırma: hemen bir agent üret ve tüm agentları harekete geçir
+console.log(`\n🤖 Agent Scheduler`);
+console.log(`   Hareket: her ${AGENT_INTERVAL} dk | Yeni agent: her ${FACTORY_INTERVAL} dk\n`);
+
+// İlk tur
 (async () => {
-  console.log('🚀 İlk tur başlıyor...\n');
   await spawnAgent();
+  await spawnAgent();
+  await spawnAgent();
+  isRunning = true;
   await runAllAgents();
+  isRunning = false;
 })();
 
-// Agent runner: her N dakikada tüm agentlar hareket eder
+// Agent turu — overlap korumalı
 cron.schedule(`*/${AGENT_INTERVAL} * * * *`, async () => {
-  console.log(`\n⏰ [${new Date().toLocaleTimeString()}] Agent turu başlıyor...`);
-  await runAllAgents();
-  console.log(`✅ Tur tamamlandı\n`);
+  if (isRunning || shuttingDown) {
+    console.log('⏭️  Onceki tur devam ediyor, atlandi');
+    return;
+  }
+  isRunning = true;
+  try {
+    await runAllAgents();
+  } finally {
+    isRunning = false;
+  }
 });
 
-// Factory: her M dakikada yeni agent doğar
+// Yeni agent üretimi
 if (FACTORY_INTERVAL > 0) {
   cron.schedule(`*/${FACTORY_INTERVAL} * * * *`, async () => {
-    console.log(`\n🧬 [${new Date().toLocaleTimeString()}] Yeni agent üretiliyor...`);
+    if (shuttingDown) return;
+    console.log('🧬 Yeni agent uretiliyor...');
     await spawnAgent();
   });
 }
+
+// Graceful shutdown
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log('\n🛑 Scheduler durduruluyor...');
+  setTimeout(() => process.exit(0), 2000);
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

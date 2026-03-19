@@ -2,9 +2,11 @@ import 'dotenv/config';
 import cron from 'node-cron';
 import { spawnAgent } from './factory';
 import { runAllAgents } from './runner';
+import { crawl } from './crawler';
 
 const AGENT_INTERVAL = parseInt(process.env.AGENT_INTERVAL_MINUTES || '3');
 const FACTORY_INTERVAL = parseInt(process.env.FACTORY_INTERVAL_MINUTES || '60');
+const CRAWLER_INTERVAL = parseInt(process.env.CRAWLER_INTERVAL_HOURS || '6');
 
 let isRunning = false;
 let shuttingDown = false;
@@ -43,6 +45,17 @@ if (FACTORY_INTERVAL > 0) {
     console.log('🧬 Yeni agent uretiliyor...');
     await spawnAgent();
   });
+}
+
+// Crawler: her N saatte agent projeleri tara ve davet gönder
+if (CRAWLER_INTERVAL > 0) {
+  // İlk çalıştırma: 5 dk sonra
+  setTimeout(() => crawl().catch(e => console.error('Crawler hata:', e)), 5 * 60_000);
+  cron.schedule(`0 */${CRAWLER_INTERVAL} * * *`, async () => {
+    if (shuttingDown) return;
+    await crawl().catch(e => console.error('Crawler hata:', e));
+  });
+  console.log(`   Crawler: her ${CRAWLER_INTERVAL} saat`);
 }
 
 // Graceful shutdown
